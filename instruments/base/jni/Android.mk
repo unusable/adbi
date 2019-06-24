@@ -20,4 +20,8 @@ LOCAL_MODULE    := base
 LOCAL_SRC_FILES := ../util.c ../hook.c ../base.c
 LOCAL_ARM_MODE := arm
 
+LOCAL_CFLAGS += -fPIC
+LOCAL_LDFLAGS += -fPIC
+
+
 include $(BUILD_STATIC_LIBRARY)

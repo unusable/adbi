@@ -40,6 +40,7 @@ unsigned int stack_end;
 /* memory map for libraries */
 #define MAX_NAME_LEN 256
 #define MEMORY_ONLY  "[memory]"
+#define MAX_MMA_LEN 0x1000
 struct mm {
 	char name[MAX_NAME_LEN];
 	unsigned long start, end;
@@ -257,7 +258,7 @@ load_symtab(char *filename)
 static int
 load_memmap(pid_t pid, struct mm *mm, int *nmmp)
 {
-	char raw[80000]; // this depends on the number of libraries an executable uses
+	char raw[0x80000]; // this depends on the number of libraries an executable uses
 	char name[MAX_NAME_LEN];
 	char *p;
 	unsigned long start, end;
@@ -293,9 +294,17 @@ load_memmap(pid_t pid, struct mm *mm, int *nmmp)
 	}
 	close(fd);
 
+    printf("----------------------------------");
 	p = strtok(raw, "\n");
 	m = mm;
 	while (p) {
+        if(nmm >= MAX_MMA_LEN) {
+            printf("Too many mm");
+            printf("1Too many mm");
+            printf("2Too many mm");
+            printf("3Too many mm");
+            break;
+        }
 		/* parse current map line */
 		rv = sscanf(p, "%08lx-%08lx %*s %*s %*s %*s %s\n",
 			    &start, &end, name);
@@ -456,7 +465,7 @@ lookup_func_sym(symtab_t s, char *name, unsigned long *val)
 static int
 find_name(pid_t pid, char *name, unsigned long *addr)
 {
-	struct mm mm[1000];
+	struct mm mm[MAX_MMA_LEN];
 	unsigned long libcaddr;
 	int nmm;
 	char libc[256];
@@ -485,7 +494,7 @@ find_name(pid_t pid, char *name, unsigned long *addr)
 
 static int find_linker(pid_t pid, unsigned long *addr)
 {
-	struct mm mm[1000];
+	struct mm mm[MAX_MMA_LEN];
 	unsigned long libcaddr;
 	int nmm;
 	char libc[256];
@@ -512,10 +521,17 @@ write_mem(pid_t pid, unsigned long *buf, int nlong, unsigned long pos)
 {
 	unsigned long *p;
 	int i;
+    int r;
 
-	for (p = buf, i = 0; i < nlong; p++, i++)
-		if (0 > ptrace(PTRACE_POKETEXT, pid, (void *)(pos+(i*4)), (void *)*p))
+        printf("======================\n");
+	for (p = buf, i = 0; i < nlong; p++, i++) {
+		r = ptrace(PTRACE_POKETEXT, pid, (void *)(pos+(i*4)), (void *)*p);
+		if (0 > r) {
+            printf("write mem error: %d\n", errno);
 			return -1;
+        }
+        printf("write mem: %d\n", i);
+    }
 	return 0;
 }
 
@@ -612,6 +628,7 @@ int main(int argc, char *argv[])
 	int opt;
 	char *appname = 0;
  
+    printf("start - 0\n");
  	while ((opt = getopt(argc, argv, "p:l:dzms:Z:D:")) != -1) {
 		switch (opt) {
 			case 'p':
@@ -650,11 +667,13 @@ int main(int argc, char *argv[])
 		}
 	}
 
+    printf("start - 1\n");
 	if (pid == 0 || n == 0) {
 		fprintf(stderr, HELPSTR, argv[0]);
 		exit(0);
 	}
 
+    printf("start - 2\n");
 	if (!nomprotect) {
 		if (0 > find_name(pid, "mprotect", &mprotectaddr)) {
 			printf("can't find address of mprotect(), error!\n");
@@ -664,11 +683,13 @@ int main(int argc, char *argv[])
 			printf("mprotect: 0x%lx\n", mprotectaddr);
 	}
 
+    printf("start - 3\n");
 	void *ldl = dlopen("libdl.so", RTLD_LAZY);
 	if (ldl) {
 		dlopenaddr = (unsigned long)dlsym(ldl, "dlopen");
 		dlclose(ldl);
 	}
+    printf("start - 4\n");
 	unsigned long int lkaddr;
 	unsigned long int lkaddr2;
 	find_linker(getpid(), &lkaddr);
@@ -761,7 +782,7 @@ int main(int argc, char *argv[])
 				printf("/");
 			waitpid(pid, NULL, 0);
 
-			ptrace(PTRACE_GETREGS, pid, 0, &regs);	
+			ptrace(PTRACE_GETREGSET, pid, 0, &regs);	
 			if (regs.ARM_ip != 0) {
 				if (debug > 1)
 					printf("not a syscall entry, wait for entry\n");
@@ -789,7 +810,7 @@ int main(int argc, char *argv[])
 		printf("cannot open %s, error!\n", buf);
 		exit(1);
 	}
-	ptrace(PTRACE_GETREGS, pid, 0, &regs);
+	ptrace(PTRACE_GETREGSET, pid, 0, &regs);
 
 
 	// setup variables of the loading and fixup code	
@@ -870,7 +891,7 @@ int main(int argc, char *argv[])
 	}
 	
 	// detach and continue
-	ptrace(PTRACE_SETREGS, pid, 0, &regs);
+	ptrace(PTRACE_SETREGSET, pid, 0, &regs);
 	ptrace(PTRACE_DETACH, pid, 0, (void *)SIGCONT);
 
 	if (debug)

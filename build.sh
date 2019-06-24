@@ -1,7 +1,7 @@
 #!/bin/sh
 
 cd hijack/jni
-ndk-build
+ndk-build NDK_DEBUG=1
 cd ../..
 
 cd instruments
