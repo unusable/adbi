@@ -28,15 +28,10 @@
 #include <termios.h>
 #include <sys/ioctl.h>
 
+#include "util.h"
 #include "hook.h"
 
-/* memory map for libraries */
-#define MAX_NAME_LEN 256
 #define MEMORY_ONLY  "[memory]"
-struct mm {
-	char name[MAX_NAME_LEN];
-	unsigned long start, end;
-};
 
 typedef struct symtab *symtab_t;
 struct symlist {
@@ -134,7 +129,7 @@ static int do_load(int fd, symtab_t symtab)
 		log("elf error 1\n")
 		goto out;
 	}
-	if (strncmp(ELFMAG, ehdr.e_ident, SELFMAG)) { /* sanity */
+	if (strncmp(ELFMAG, (const char*)ehdr.e_ident, SELFMAG)) { /* sanity */
 		log("not an elf\n")
 		goto out;
 	}
@@ -250,50 +245,61 @@ static symtab_t load_symtab(char *filename)
 
 static int load_memmap(pid_t pid, struct mm *mm, int *nmmp)
 {
-	char raw[80000]; // increase this if needed for larger "maps"
+	char raw[0x800]; // increase this if needed for larger "maps"
 	char name[MAX_NAME_LEN];
-	char *p;
+	// char *p;
 	unsigned long start, end;
 	struct mm *m;
-	int nmm = 0;
-	int fd, rv;
+	int count, nmm = 0;
+	int rv;
 	int i;
+	FILE *fd;
+	log("2222222222222");
 
 	sprintf(raw, "/proc/%d/maps", pid);
-	fd = open(raw, O_RDONLY);
+	fd = fopen(raw, "r");
 	if (0 > fd) {
-		//printf("Can't open %s for reading\n", raw);
+		log("load_memmap: Can't open %s for reading\n", raw);
 		return -1;
 	}
 
+	log("33333333333333");
 	/* Zero to ensure data is null terminated */
 	memset(raw, 0, sizeof(raw));
 
-	p = raw;
-	while (1) {
-		rv = read(fd, p, sizeof(raw)-(p-raw));
-		if (0 > rv) {
-			//perror("read");
-			return -1;
-		}
-		if (0 == rv)
-			break;
-		p += rv;
-		if (p-raw >= sizeof(raw)) {
-			//printf("Too many memory mapping\n");
-			return -1;
-		}
-	}
-	close(fd);
+	// p = raw;
+	// while (1) {
+	// 	rv = fgets(raw, sizeof(raw)-1, fd);
+	// 	// rv = read(fd, p, sizeof(raw)-(p-raw));
+	// 	// if (0 > rv) {
+	// 	// 	log("read error");
+	// 	// 	//perror("read");
+	// 	// 	return -1;
+	// 	// }
+	// 	if (0 == rv)
+	// 		break;
+	// 	p += rv;
+	// 	if (p-raw >= sizeof(raw)) {
+	// 		log("Too many memory mapping\n");
+	// 		return -1;
+	// 	}
+	// }
+	// close(fd);
 
-	p = strtok(raw, "\n");
-	m = mm;
-	while (p) {
+	// p = strtok(raw, "\n");
+	// m = mm;
+
+	count = *nmmp;
+	while (fgets(raw, sizeof(raw), fd)) {
+		if(nmm > count) {
+			log("Too many memory mapping\n");
+			break;
+		}
 		/* parse current map line */
-		rv = sscanf(p, "%08lx-%08lx %*s %*s %*s %*s %s\n",
+		rv = sscanf(raw, "%08lx-%08lx %*s %*s %*s %*s %s\n",
 			    &start, &end, name);
 
-		p = strtok(NULL, "\n");
+		// p = strtok(NULL, "\n");
 
 		if (rv == 2) {
 			m = &mm[nmm++];
@@ -303,26 +309,30 @@ static int load_memmap(pid_t pid, struct mm *mm, int *nmmp)
 			continue;
 		}
 
-		/* search backward for other mapping with same name */
-		for (i = nmm-1; i >= 0; i--) {
-			m = &mm[i];
-			if (!strcmp(m->name, name))
-				break;
-		}
+		// /* search backward for other mapping with same name */
+		// for (i = nmm-1; i >= 0; i--) {
+		// 	m = &mm[i];
+		// 	if (!strcmp(m->name, name))
+		// 		break;
+		// }
 
-		if (i >= 0) {
-			if (start < m->start)
-				m->start = start;
-			if (end > m->end)
-				m->end = end;
-		} else {
+		// if (i >= 0) {
+		// 	if (start < m->start)
+		// 		m->start = start;
+		// 	if (end > m->end)
+		// 		m->end = end;
+		// } else {
 			/* new entry */
 			m = &mm[nmm++];
 			m->start = start;
 			m->end = end;
 			strcpy(m->name, name);
-		}
+			log(" --> %s", name);
+		// }
 	}
+	fclose(fd);
+
+	log("44444444444444");
 
 	*nmmp = nmm;
 	return 0;
@@ -362,7 +372,58 @@ static int find_libname(char *libn, char *name, int len, unsigned long *start, s
 	if (strlen(m->name) >= len)
 		name[len-1] = '\0';
 		
-	mprotect((void*)m->start, m->end - m->start, PROT_READ|PROT_WRITE|PROT_EXEC);
+	if(mprotect((void*)m->start, m->end - m->start, PROT_READ|PROT_WRITE|PROT_EXEC)) {
+		log("mprotect %lx - %lx error: %d", m->start, m->end, errno);
+	}
+	return 0;
+}
+
+static int find_lib_by_name(const char *libn, struct mm *mm, int nmm)
+{
+	int i;
+	struct mm *m;
+	char *p;
+	for (i = 0, m = mm; i < nmm; i++, m++) {
+		if (!strcmp(m->name, MEMORY_ONLY))
+			continue;
+		p = strrchr(m->name, '/');
+		if (!p)
+			continue;
+		p++;
+		if (strncmp(libn, p, strlen(libn)))
+			continue;
+		p += strlen(libn);
+
+		/* here comes our crude test -> 'libc.so' or 'libc-[0-9]' */
+		if (!strncmp("so", p, 2) || 1) // || (p[0] == '-' && isdigit(p[1])))
+			break;
+	}
+	if (i >= nmm)
+		/* not found */
+		return -1;
+
+	return i;
+}
+
+int find_lib_map(pid_t pid, const char *libn, struct mm *pmm)
+{
+	int nmm = 200;
+	struct mm mm[200];
+	int index;
+
+	log("11111")
+	if (0 > load_memmap(pid, mm, &nmm)) {
+		return -1;
+	}
+	log("22222")
+	index = find_lib_by_name(libn, mm, nmm);
+	if (0 > index) {
+		log("cannot find lib: %s\n", libn)
+		return -1;
+	}
+	log("333333")
+	memcpy(pmm, &mm[index], sizeof(struct mm));
+	log("11111")
 	return 0;
 }
 
@@ -406,12 +467,12 @@ int find_name(pid_t pid, char *name, char *libn, unsigned long *addr)
 {
 	struct mm mm[1000];
 	unsigned long libcaddr;
-	int nmm;
+	int nmm = 1000;
 	char libc[1024];
 	symtab_t s;
 
 	if (0 > load_memmap(pid, mm, &nmm)) {
-		log("cannot read memory map\n")
+		log("cannot read memory map pid: %d\n", pid)
 		return -1;
 	}
 	if (0 > find_libname(libn, libc, sizeof(libc), &libcaddr, mm, nmm)) {
@@ -436,7 +497,7 @@ int find_libbase(pid_t pid, char *libn, unsigned long *addr)
 {
 	struct mm mm[1000];
 	unsigned long libcaddr;
-	int nmm;
+	int nmm = 1000;
 	char libc[1024];
 	symtab_t s;
 

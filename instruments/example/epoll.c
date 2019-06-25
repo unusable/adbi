@@ -22,12 +22,17 @@
 #include <termios.h>
 #include <pthread.h>
 #include <sys/epoll.h>
+#include <sys/mman.h>
+#include <unistd.h>
+#include <errno.h>
 
 #include <jni.h>
 #include <stdlib.h>
+#include "log.h"
 
 #include "../base/hook.h"
 #include "../base/base.h"
+#include "../base/util.h"
 
 #undef log
 
@@ -39,7 +44,7 @@
 
 // this file is going to be compiled into a thumb mode binary
 
-void __attribute__ ((constructor)) my_init(void);
+// void __attribute__ ((constructor)) my_init(void);
 
 static struct hook_t eph;
 
@@ -54,9 +59,10 @@ extern int my_epoll_wait_arm(int epfd, struct epoll_event *events, int maxevents
  *
  *  see: set_logfunction() in base.h
  */
-static void my_log(char *msg)
+static void my_log(const char *msg)
 {
-	log("%s", msg)
+	LOGD("%s", msg);
+	// log("%s", msg)
 }
 
 int my_epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
@@ -81,10 +87,28 @@ void my_init(void)
 {
 	counter = 3;
 
-	log("%s started\n", __FILE__)
- 
 	set_logfunction(my_log);
 
+	LOGD("%s started\n", __FILE__);
+ 
+	struct mm mm;
+	find_lib_map(getpid(), "libc.", &mm);
+	if(mprotect((void*)mm.start, mm.end - mm.start, PROT_READ|PROT_WRITE)) {
+		log("<< mprotect %lx - %lx error: %d", mm.start, mm.end, errno);
+	}
+
 	hook(&eph, getpid(), "libc.", "epoll_wait", my_epoll_wait_arm, my_epoll_wait);
+
+	if(mprotect((void*)mm.start, mm.end - mm.start, PROT_READ|PROT_EXEC)) {
+		log(">> mprotect %lx - %lx error: %d", mm.start, mm.end, errno);
+	}
+
+
 }
 
+int Inject_entry()
+{
+    LOGD("Inject_entry Func is called\n");
+	my_init();
+    return (int)my_epoll_wait;
+}
