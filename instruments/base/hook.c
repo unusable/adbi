@@ -21,11 +21,14 @@
 #include <termios.h>
 #include <pthread.h>
 #include <sys/epoll.h>
+#include <sys/mman.h>
 
 #include <jni.h>
 
 #include "util.h"
 #include "hook.h"
+#include "log.h"
+#include <errno.h>
 
 //void __attribute__ ((constructor)) my_init(void);
 
@@ -126,11 +129,30 @@ int hook(struct hook_t *h, int pid, char *libname, char *funcname, void *hook_ar
 			h->storet[i] = ((unsigned char*)orig)[i];
 			//log("%0.2x ", h->storet[i])
 		}
+
+		void *begin = (void *)((uint)orig & (~0xFFF));
 		//log("\n")
+		if (mprotect((void *)begin, 0x1000, PROT_READ | PROT_WRITE))
+		{
+			LOGD("<< mprotect %x error: %d", (uint)begin, errno);
+		}
+		else
+		{
+			LOGD("<< mprotect %x ", (uint)begin);
+		}
 		for (i = 0; i < 20; i++) {
 			((unsigned char*)orig)[i] = h->jumpt[i];
 			//log("%0.2x ", ((unsigned char*)orig)[i])
 		}
+		if (mprotect((void *)begin, 0x1000, PROT_READ | PROT_EXEC))
+		{
+			LOGD("<< mprotect %x error: %d", (uint)begin, errno);
+		}
+		else
+		{
+			LOGD("<< mprotect %x ", (uint)begin);
+		}
+
 	}
 	hook_cacheflush((unsigned int)h->orig, (unsigned int)h->orig+sizeof(h->jumpt));
 	return 1;
@@ -202,13 +224,13 @@ int start_coms(int *coms, char *ptsn)
 	}
 	//else
 	//	log("pty created\n")
-	if (unlockpt(*coms) < 0) {
-		log("unlockpt failed\n")
-		return 0;
-	}
+	// if (unlockpt(*coms) < 0) {
+	// 	log("unlockpt failed\n")
+	// 	return 0;
+	// }
 
-	if (ptsn)
-		strcpy(ptsn, (char*)ptsname(*coms));
+	// if (ptsn)
+	// 	strcpy(ptsn, (char*)ptsname(*coms));
 
 	struct termios  ios;
 	tcgetattr(*coms, &ios);

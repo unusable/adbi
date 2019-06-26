@@ -108,31 +108,31 @@ void my_init(void)
     //     LOGD("%s", content);
     // }
 	LOGD("===============");
-	for (i = 0; i < nvma; i++)
-	{
-		mm = &vma[i];
-		LOGD("<< mprotect %lx - %lx ", mm->vm_start, mm->vm_end);
-		LOGD("-<< mprotect %lx - %lx ", mm->vm_start, mm->vm_end);
-		if (mprotect((void *)mm->vm_start, mm->vm_end - mm->vm_start, PROT_READ | PROT_WRITE))
-		{
-			LOGD("<< mprotect %lx - %lx error: %d", mm->vm_start, mm->vm_end, errno);
-		}
-		else
-		{
-			LOGD("<< mprotect %lx - %lx ", mm->vm_start, mm->vm_end);
-		}
-	}
+	// for (i = 0; i < nvma; i++)
+	// {
+	// 	mm = &vma[i];
+	// 	LOGD("<< mprotect %lx - %lx ", mm->vm_start, mm->vm_end);
+	// 	LOGD("-<< mprotect %lx - %lx ", mm->vm_start, mm->vm_end);
+	// 	if (mprotect((void *)mm->vm_start, mm->vm_end - mm->vm_start, PROT_READ | PROT_WRITE))
+	// 	{
+	// 		LOGD("<< mprotect %lx - %lx error: %d", mm->vm_start, mm->vm_end, errno);
+	// 	}
+	// 	else
+	// 	{
+	// 		LOGD("<< mprotect %lx - %lx ", mm->vm_start, mm->vm_end);
+	// 	}
+	// }
 
 	hook(&eph, getpid(), "libc.", "epoll_wait", my_epoll_wait_arm, my_epoll_wait);
 
-	for (i = 0; i < nvma; i++)
-	{
-		mm = &vma[i];
-		if (mprotect((void *)mm->vm_start, mm->vm_end - mm->vm_start, mm->vm_flags))
-		{
-			LOGD("<< mprotect %lx - %lx error: %d", mm->vm_start, mm->vm_end, errno);
-		}
-	}
+	// for (i = 0; i < nvma; i++)
+	// {
+	// 	mm = &vma[i];
+	// 	if (mprotect((void *)mm->vm_start, mm->vm_end - mm->vm_start, mm->vm_flags))
+	// 	{
+	// 		LOGD("<< mprotect %lx - %lx error: %d", mm->vm_start, mm->vm_end, errno);
+	// 	}
+	// }
 }
 
 int Inject_entry()
