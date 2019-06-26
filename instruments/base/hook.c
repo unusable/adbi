@@ -76,15 +76,26 @@ int hook_direct(struct hook_t *h, unsigned int addr, void *hookf)
 
 int hook(struct hook_t *h, int pid, char *libname, char *funcname, void *hook_arm, void *hook_thumb)
 {
-	unsigned long int addr;
+	unsigned int addr;
 	int i;
 
-	if (find_name(pid, funcname, libname, &addr) < 0) {
-		log("can't find: %s\n", funcname)
-		return 0;
-	}
+    void *lib = dlopen(libname, RTLD_LOCAL | RTLD_LAZY);
+    if(!lib) {
+        log("open library %s error", libname);
+        return 0;
+    }
+    addr = (unsigned int)dlsym(lib, funcname);
+    if(!addr) {
+        log("get library %s function %s error", libname, funcname);
+        return 0;
+    }
+
+	// if (find_name(pid, funcname, libname, &addr) < 0) {
+	// 	log("can't find: %s in %s\n", funcname, libname)
+	// 	return 0;
+	// }
 	
-	log("hooking:   %s = 0x%lx ", funcname, addr)
+	log("hooking:   %s = 0x%lx ", funcname, (unsigned long)addr)
 	strncpy((char*)(h->name), funcname, sizeof(h->name)-1);
 
 	if (addr % 4 == 0) {
@@ -130,9 +141,9 @@ int hook(struct hook_t *h, int pid, char *libname, char *funcname, void *hook_ar
 			//log("%0.2x ", h->storet[i])
 		}
 
-		void *begin = (void *)((uint)orig & (~0xFFF));
-		//log("\n")
-		if (mprotect((void *)begin, 0x1000, PROT_READ | PROT_WRITE))
+		void *begin = (void *)(orig & (~0xFFF));
+		log("=============================== %x \n", (uint)begin)
+		if (mprotect(begin, 0x1000, PROT_READ | PROT_WRITE| PROT_EXEC))
 		{
 			LOGD("<< mprotect %x error: %d", (uint)begin, errno);
 		}
@@ -140,11 +151,13 @@ int hook(struct hook_t *h, int pid, char *libname, char *funcname, void *hook_ar
 		{
 			LOGD("<< mprotect %x ", (uint)begin);
 		}
+		log("===============================\n")
 		for (i = 0; i < 20; i++) {
 			((unsigned char*)orig)[i] = h->jumpt[i];
 			//log("%0.2x ", ((unsigned char*)orig)[i])
 		}
-		if (mprotect((void *)begin, 0x1000, PROT_READ | PROT_EXEC))
+		log("===============================\n")
+		if (mprotect(begin, 0x1000, PROT_READ | PROT_EXEC))
 		{
 			LOGD("<< mprotect %x error: %d", (uint)begin, errno);
 		}
@@ -152,7 +165,7 @@ int hook(struct hook_t *h, int pid, char *libname, char *funcname, void *hook_ar
 		{
 			LOGD("<< mprotect %x ", (uint)begin);
 		}
-
+		log("===============================\n")
 	}
 	hook_cacheflush((unsigned int)h->orig, (unsigned int)h->orig+sizeof(h->jumpt));
 	return 1;

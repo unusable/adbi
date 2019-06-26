@@ -89,6 +89,12 @@ int my_epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeo
 	return res;
 }
 
+int fake_connect(int s, const struct sockaddr * addr, socklen_t l)
+{
+    log("##### connect ####");
+    return connect(s, addr, l);
+}
+
 void my_init(void)
 {
 	char content[512];
@@ -123,7 +129,7 @@ void my_init(void)
 	// 	}
 	// }
 
-	hook(&eph, getpid(), "libc.", "epoll_wait", my_epoll_wait_arm, my_epoll_wait);
+	hook(&eph, getpid(), "/system/lib/libc.so", "connect", my_epoll_wait_arm, fake_connect);
 
 	// for (i = 0; i < nvma; i++)
 	// {
