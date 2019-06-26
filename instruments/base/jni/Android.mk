@@ -17,7 +17,7 @@ LOCAL_PATH := $(call my-dir)
 include $(CLEAR_VARS)
 
 LOCAL_MODULE    := base
-LOCAL_SRC_FILES := ../util.c ../hook.c ../base.c
+LOCAL_SRC_FILES := ../util.c ../hook.c ../base.c ../pesudo_mm.c
 LOCAL_ARM_MODE := arm
 
 LOCAL_CFLAGS += -fPIC

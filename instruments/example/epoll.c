@@ -28,19 +28,24 @@
 
 #include <jni.h>
 #include <stdlib.h>
-#include "log.h"
+#include "../base/log.h"
 
 #include "../base/hook.h"
 #include "../base/base.h"
 #include "../base/util.h"
+#include "../base/pesudo_mm.h"
 
 #undef log
 
-#define log(...) \
-        {FILE *fp = fopen("/data/local/tmp/adbi_example.log", "a+"); if (fp) {\
-        fprintf(fp, __VA_ARGS__);\
-        fclose(fp);}}
-
+#define log(...)                                                    \
+	{                                                               \
+		FILE *fp = fopen("/data/local/tmp/adbi_example.log", "a+"); \
+		if (fp)                                                     \
+		{                                                           \
+			fprintf(fp, __VA_ARGS__);                               \
+			fclose(fp);                                             \
+		}                                                           \
+	}
 
 // this file is going to be compiled into a thumb mode binary
 
@@ -68,47 +73,71 @@ static void my_log(const char *msg)
 int my_epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 {
 	int (*orig_epoll_wait)(int epfd, struct epoll_event *events, int maxevents, int timeout);
-	orig_epoll_wait = (void*)eph.orig;
+	orig_epoll_wait = (void *)eph.orig;
 
 	hook_precall(&eph);
 	int res = orig_epoll_wait(epfd, events, maxevents, timeout);
-	if (counter) {
+	if (counter)
+	{
 		hook_postcall(&eph);
 		log("epoll_wait() called\n");
 		counter--;
 		if (!counter)
 			log("removing hook for epoll_wait()\n");
 	}
-        
+
 	return res;
 }
 
 void my_init(void)
 {
+	char content[512];
+	struct vm_area_struct vma[10], *mm;
+	int i, nvma = 10;
+
 	counter = 3;
 
 	set_logfunction(my_log);
 
 	LOGD("%s started\n", __FILE__);
- 
-	struct mm mm;
-	find_lib_map(getpid(), "libc.", &mm);
-	if(mprotect((void*)mm.start, mm.end - mm.start, PROT_READ|PROT_WRITE)) {
-		log("<< mprotect %lx - %lx error: %d", mm.start, mm.end, errno);
+
+	get_module_map(getpid(), "/system/lib/libc.so", vma, &nvma);
+	// LOGD("===============");
+	// for(i = 0; i < nvma; i++) {
+    //     serialize_vm_area_item(&vma[i], content);
+    //     LOGD("%s", content);
+    // }
+	LOGD("===============");
+	for (i = 0; i < nvma; i++)
+	{
+		mm = &vma[i];
+		LOGD("<< mprotect %lx - %lx ", mm->vm_start, mm->vm_end);
+		LOGD("-<< mprotect %lx - %lx ", mm->vm_start, mm->vm_end);
+		if (mprotect((void *)mm->vm_start, mm->vm_end - mm->vm_start, PROT_READ | PROT_WRITE))
+		{
+			LOGD("<< mprotect %lx - %lx error: %d", mm->vm_start, mm->vm_end, errno);
+		}
+		else
+		{
+			LOGD("<< mprotect %lx - %lx ", mm->vm_start, mm->vm_end);
+		}
 	}
 
 	hook(&eph, getpid(), "libc.", "epoll_wait", my_epoll_wait_arm, my_epoll_wait);
 
-	if(mprotect((void*)mm.start, mm.end - mm.start, PROT_READ|PROT_EXEC)) {
-		log(">> mprotect %lx - %lx error: %d", mm.start, mm.end, errno);
+	for (i = 0; i < nvma; i++)
+	{
+		mm = &vma[i];
+		if (mprotect((void *)mm->vm_start, mm->vm_end - mm->vm_start, mm->vm_flags))
+		{
+			LOGD("<< mprotect %lx - %lx error: %d", mm->vm_start, mm->vm_end, errno);
+		}
 	}
-
-
 }
 
 int Inject_entry()
 {
-    LOGD("Inject_entry Func is called\n");
+	LOGD("Inject_entry Func is called\n");
 	my_init();
-    return (int)my_epoll_wait;
+	return (int)my_epoll_wait;
 }

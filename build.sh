@@ -1,17 +1,15 @@
 #!/bin/sh
 
-cd hijack/jni
+pushd hijack/jni
 ndk-build NDK_DEBUG=1
-cd ../..
+popd
 
-cd instruments
-cd base/jni
+pushd instruments/base/jni
 ndk-build
-cd ../..
+popd
 
-cd example/jni
+pushd instruments/example/jni
 ndk-build
-cd ../..
+popd
 
-cd ..
 

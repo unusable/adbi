@@ -82,7 +82,7 @@ int hook(struct hook_t *h, int pid, char *libname, char *funcname, void *hook_ar
 	}
 	
 	log("hooking:   %s = 0x%lx ", funcname, addr)
-	strncpy(h->name, funcname, sizeof(h->name)-1);
+	strncpy((char*)(h->name), funcname, sizeof(h->name)-1);
 
 	if (addr % 4 == 0) {
 		log("ARM using 0x%lx\n", (unsigned long)hook_arm)
@@ -128,8 +128,8 @@ int hook(struct hook_t *h, int pid, char *libname, char *funcname, void *hook_ar
 		}
 		//log("\n")
 		for (i = 0; i < 20; i++) {
-			// ((unsigned char*)orig)[i] = h->jumpt[i];
-			log("%0.2x ", ((unsigned char*)orig)[i])
+			((unsigned char*)orig)[i] = h->jumpt[i];
+			//log("%0.2x ", ((unsigned char*)orig)[i])
 		}
 	}
 	hook_cacheflush((unsigned int)h->orig, (unsigned int)h->orig+sizeof(h->jumpt));
